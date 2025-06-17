@@ -14,6 +14,8 @@ pub struct App {
     pub tempo: u32,
     pub last_tick: Instant,
     pub selected_pad: Option<usize>,
+    pub flashing_pads: Vec<(usize, usize)>, // (group, pad) pairs that are currently flashing
+    pub flash_timer: Instant,
 }
 
 impl App {
@@ -35,6 +37,8 @@ impl App {
             tempo: 120,
             last_tick: Instant::now(),
             selected_pad: None,
+            flashing_pads: Vec::new(),
+            flash_timer: Instant::now(),
         }
     }
 
@@ -95,8 +99,14 @@ impl App {
     }
 
     pub fn tick(&mut self) {
+        let now = Instant::now();
+        
+        // Clear flashing pads after flash duration (150ms)
+        if now.duration_since(self.flash_timer) >= std::time::Duration::from_millis(150) {
+            self.flashing_pads.clear();
+        }
+        
         if self.is_playing {
-            let now = Instant::now();
             let elapsed = now.duration_since(self.last_tick);
             let tick_duration = std::time::Duration::from_millis(60000 / (self.tempo * 4) as u64);
             
@@ -106,11 +116,16 @@ impl App {
                 // Get hits for current position
                 let hits = self.sequencer.tick(self.tempo);
                 
-                // Play all hits
+                // Clear previous flashing pads and set new ones
+                self.flashing_pads.clear();
+                self.flash_timer = now;
+                
+                // Play all hits and add to flashing pads
                 for (group, pad) in hits {
                     if let Some(sample) = self.sample_bank.get_sample(group, pad) {
                         self.audio_engine.play_sample(sample);
                     }
+                    self.flashing_pads.push((group, pad));
                 }
             }
         }
