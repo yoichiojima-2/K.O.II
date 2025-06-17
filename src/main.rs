@@ -75,7 +75,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
                     match key.code {
-                        KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
+                        KeyCode::Esc => return Ok(()),
                         KeyCode::Char(' ') => app.toggle_playback(),
                         KeyCode::Char('r') => app.toggle_recording(),
                         KeyCode::Char('c') => app.clear_pattern(),

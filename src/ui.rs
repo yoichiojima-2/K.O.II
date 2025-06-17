@@ -236,7 +236,7 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(tempo, chunks[1]);
 
     // Help
-    let help_text = "SPACE:Play/Stop | R:Record | C:Clear | TAB:Groups | ←→:Patterns | ↑↓:Tempo | Q:Quit";
+    let help_text = "SPACE:Play/Stop | R:Record | C:Clear | TAB:Groups | ←→:Patterns | ↑↓:Tempo | ESC:Quit";
     let help = Paragraph::new(help_text)
         .block(Block::default().borders(Borders::ALL).title("Controls"))
         .style(Style::default().fg(Color::Gray));
