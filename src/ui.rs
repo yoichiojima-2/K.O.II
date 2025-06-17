@@ -171,10 +171,12 @@ fn draw_pattern_view(f: &mut Frame, area: Rect, app: &App) {
         ])
         .split(area);
 
-    // Pattern info
+    // Pattern info  
+    let group_names = ["DRUMS", "BASS", "LEAD", "VOCAL"];
     let pattern_info = Paragraph::new(format!(
-        "Pattern: {:02}\nStep: {:02}/16",
-        app.current_pattern + 1,
+        "{} Pattern: {:02}\nStep: {:02}/16",
+        group_names[app.current_group],
+        app.get_current_pattern() + 1,
         app.get_current_step() + 1
     ))
     .block(Block::default().borders(Borders::ALL).title("Pattern"));

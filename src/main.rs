@@ -19,12 +19,49 @@ use ratatui::{
 };
 
 use app::App;
+use sample::SampleBank;
 
 fn main() -> Result<(), Box<dyn Error>> {
+    // Check for command line arguments
+    let args: Vec<String> = std::env::args().collect();
+    
+    if args.len() > 1 {
+        match args[1].as_str() {
+            "generate-config" => {
+                SampleBank::generate_example_config()?;
+                return Ok(());
+            }
+            "help" | "--help" | "-h" => {
+                println!("K.O.II Terminal - Drum Machine/Sequencer");
+                println!();
+                println!("Usage:");
+                println!("  cargo run                  - Start the application");
+                println!("  cargo run generate-config  - Generate example config file");
+                println!("  cargo run help             - Show this help");
+                return Ok(());
+            }
+            _ => {
+                eprintln!("Unknown command: {}", args[1]);
+                eprintln!("Run 'cargo run help' for usage information");
+                return Ok(());
+            }
+        }
+    }
+    
     // Create app first to check if that's the issue
     println!("Creating app...");
-    let app = App::new();
+    let mut app = App::new();
     println!("App created successfully!");
+    
+    // Test audio by playing the built-in kick drum
+    if let Some(kick_sample) = app.sample_bank.get_sample(0, 0) {
+        println!("Testing built-in kick drum...");
+        app.audio_engine.play_sample(kick_sample);
+        std::thread::sleep(std::time::Duration::from_millis(1000));
+        println!("Audio test complete!");
+    } else {
+        println!("No kick drum sample found");
+    }
 
     // Setup terminal
     println!("Setting up terminal...");

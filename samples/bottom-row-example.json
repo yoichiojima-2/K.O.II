@@ -1,0 +1,28 @@
+{
+  "mappings": [
+    {
+      "group": 0,
+      "pad": 12,
+      "file": "drums/kick.wav",
+      "name": "Kick"
+    },
+    {
+      "group": 0,
+      "pad": 13,
+      "file": "drums/snare.wav", 
+      "name": "Snare"
+    },
+    {
+      "group": 0,
+      "pad": 14,
+      "file": "drums/hihat.wav",
+      "name": "Hi-Hat"
+    },
+    {
+      "group": 0,
+      "pad": 15,
+      "file": "drums/crash.wav",
+      "name": "Crash"
+    }
+  ]
+}

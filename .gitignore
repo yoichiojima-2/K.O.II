@@ -1,1 +1,16 @@
 /target
+
+# Audio samples (keep these local)
+samples/*.wav
+samples/*.mp3
+samples/*.flac
+samples/*.ogg
+samples/*/*.wav
+samples/*/*.mp3
+samples/*/*.flac
+samples/*/*.ogg
+
+# But keep the structure and docs
+!samples/README.md
+!samples/*.json
+!samples/*/

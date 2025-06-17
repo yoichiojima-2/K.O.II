@@ -8,7 +8,7 @@ pub struct App {
     pub sequencer: Sequencer,
     pub sample_bank: SampleBank,
     pub current_group: usize,
-    pub current_pattern: usize,
+    pub group_patterns: [usize; 4], // Each group has its own current pattern
     pub is_playing: bool,
     pub is_recording: bool,
     pub tempo: u32,
@@ -26,12 +26,19 @@ impl App {
         // Load default samples
         sample_bank.load_defaults();
         
+        let mut sequencer = Sequencer::new();
+        
+        // Initialize all groups to use pattern 0
+        for group in 0..4 {
+            sequencer.set_active_pattern(group, 0);
+        }
+        
         Self {
             audio_engine,
-            sequencer: Sequencer::new(),
+            sequencer,
             sample_bank,
             current_group: 0,
-            current_pattern: 0,
+            group_patterns: [0; 4], // Each group starts on pattern 0
             is_playing: false,
             is_recording: false,
             tempo: 120,
@@ -53,7 +60,7 @@ impl App {
             if self.is_recording && self.is_playing {
                 self.sequencer.record_hit(
                     self.current_group,
-                    self.current_pattern,
+                    self.group_patterns[self.current_group],
                     pad,
                 );
             }
@@ -74,7 +81,7 @@ impl App {
     }
 
     pub fn clear_pattern(&mut self) {
-        self.sequencer.clear_pattern(self.current_group, self.current_pattern);
+        self.sequencer.clear_pattern(self.current_group, self.group_patterns[self.current_group]);
     }
 
     pub fn next_group(&mut self) {
@@ -86,11 +93,14 @@ impl App {
     }
 
     pub fn next_pattern(&mut self) {
-        self.current_pattern = (self.current_pattern + 1) % 99;
+        self.group_patterns[self.current_group] = (self.group_patterns[self.current_group] + 1) % 99;
+        self.sequencer.set_active_pattern(self.current_group, self.group_patterns[self.current_group]);
     }
 
     pub fn prev_pattern(&mut self) {
-        self.current_pattern = if self.current_pattern == 0 { 98 } else { self.current_pattern - 1 };
+        let current_pattern = self.group_patterns[self.current_group];
+        self.group_patterns[self.current_group] = if current_pattern == 0 { 98 } else { current_pattern - 1 };
+        self.sequencer.set_active_pattern(self.current_group, self.group_patterns[self.current_group]);
     }
 
     pub fn adjust_tempo(&mut self, delta: i32) {
@@ -132,7 +142,11 @@ impl App {
     }
 
     pub fn get_pattern_grid(&self) -> Vec<Vec<bool>> {
-        self.sequencer.get_pattern_grid(self.current_group, self.current_pattern)
+        self.sequencer.get_pattern_grid(self.current_group, self.group_patterns[self.current_group])
+    }
+    
+    pub fn get_current_pattern(&self) -> usize {
+        self.group_patterns[self.current_group]
     }
 
     pub fn get_current_step(&self) -> usize {
