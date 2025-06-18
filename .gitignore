@@ -1,5 +1,14 @@
 /target
 
+# macOS system files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
 # Audio samples (keep these local)
 samples/*.wav
 samples/*.mp3
