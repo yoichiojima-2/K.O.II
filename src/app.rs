@@ -1,10 +1,10 @@
-use crate::audio::AudioEngine;
+use crate::mixer::Mixer;
 use crate::sequencer::Sequencer;
 use crate::sample::SampleBank;
 use std::time::Instant;
 
 pub struct App {
-    pub audio_engine: AudioEngine,
+    pub mixer: Mixer,
     pub sequencer: Sequencer,
     pub sample_bank: SampleBank,
     pub current_group: usize,
@@ -20,7 +20,7 @@ pub struct App {
 
 impl App {
     pub fn new() -> Self {
-        let audio_engine = AudioEngine::new();
+        let mixer = Mixer::new();
         let mut sample_bank = SampleBank::new();
         
         // Load default samples
@@ -34,7 +34,7 @@ impl App {
         }
         
         Self {
-            audio_engine,
+            mixer,
             sequencer,
             sample_bank,
             current_group: 0,
@@ -54,7 +54,7 @@ impl App {
             // Play the sample only if not recording
             if !self.is_recording {
                 if let Some(sample) = self.sample_bank.get_sample(self.current_group, pad) {
-                    self.audio_engine.play_sample(sample);
+                    self.mixer.play_sample(sample, self.current_group);
                 }
             }
             
@@ -135,7 +135,7 @@ impl App {
                 // Play all hits and add to flashing pads
                 for (group, pad) in hits {
                     if let Some(sample) = self.sample_bank.get_sample(group, pad) {
-                        self.audio_engine.play_sample(sample);
+                        self.mixer.play_sample(sample, group);
                     }
                     self.flashing_pads.push((group, pad));
                 }
@@ -153,5 +153,38 @@ impl App {
 
     pub fn get_current_step(&self) -> usize {
         self.sequencer.get_current_step()
+    }
+
+    // Mixer control methods
+    pub fn adjust_master_volume(&mut self, delta: f32) {
+        self.mixer.adjust_master_volume(delta);
+    }
+
+    pub fn toggle_master_mute(&mut self) {
+        self.mixer.toggle_master_mute();
+    }
+
+    pub fn adjust_group_volume(&mut self, group: usize, delta: f32) {
+        self.mixer.adjust_group_volume(group, delta);
+    }
+
+    pub fn toggle_group_mute(&mut self, group: usize) {
+        self.mixer.toggle_group_mute(group);
+    }
+
+    pub fn get_master_volume(&self) -> f32 {
+        self.mixer.get_master_volume()
+    }
+
+    pub fn get_group_volume(&self, group: usize) -> f32 {
+        self.mixer.get_group_volume(group)
+    }
+
+    pub fn is_master_muted(&self) -> bool {
+        self.mixer.is_master_muted()
+    }
+
+    pub fn is_group_muted(&self, group: usize) -> bool {
+        self.mixer.is_group_muted(group)
     }
 }

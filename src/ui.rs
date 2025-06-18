@@ -68,13 +68,15 @@ fn draw_main_content(f: &mut Frame, area: Rect, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Percentage(60), // Pad grid
-            Constraint::Percentage(40), // Pattern view
+            Constraint::Percentage(50), // Pad grid
+            Constraint::Percentage(25), // Pattern view
+            Constraint::Percentage(25), // Mixer
         ])
         .split(area);
 
     draw_pad_grid(f, chunks[0], app);
     draw_pattern_view(f, chunks[1], app);
+    draw_mixer(f, chunks[2], app);
 }
 
 fn draw_pad_grid(f: &mut Frame, area: Rect, app: &App) {
@@ -237,6 +239,86 @@ fn draw_pattern_view(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(table, chunks[1]);
 }
 
+fn draw_mixer(f: &mut Frame, area: Rect, app: &App) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(5),   // Master volume
+            Constraint::Min(8),      // Group volumes
+        ])
+        .split(area);
+
+    // Master volume section
+    let master_vol = (app.get_master_volume() * 100.0) as u8;
+    let master_bar = create_volume_bar(master_vol, app.is_master_muted());
+    let master_text = format!(
+        "MASTER: {}%\n{}\n{}", 
+        master_vol,
+        master_bar,
+        if app.is_master_muted() { "[MUTED]" } else { "" }
+    );
+    
+    let master_style = if app.is_master_muted() {
+        Style::default().fg(Color::Red)
+    } else {
+        Style::default().fg(Color::White)
+    };
+    
+    let master_block = Paragraph::new(master_text)
+        .block(Block::default().borders(Borders::ALL).title("Master (=/- M)"))
+        .style(master_style)
+        .alignment(Alignment::Center);
+    f.render_widget(master_block, chunks[0]);
+
+    // Group volumes
+    let group_names = ["DRUMS", "BASS", "LEAD", "VOCAL"];
+    let group_keys = ["1/! F1", "2/@ F2", "3/# F3", "4/$ F4"];
+    let group_colors = [
+        Color::Rgb(100, 150, 150), // DRUMS - muted teal
+        Color::Rgb(100, 100, 150), // BASS - muted blue  
+        Color::Rgb(150, 100, 150), // LEAD - muted purple
+        Color::Rgb(150, 150, 100), // VOCAL - muted gold
+    ];
+    
+    let group_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(25); 4])
+        .split(chunks[1]);
+
+    for (i, (name, keys)) in group_names.iter().zip(group_keys.iter()).enumerate() {
+        let vol = (app.get_group_volume(i) * 100.0) as u8;
+        let bar = create_volume_bar(vol, app.is_group_muted(i));
+        let text = format!("{}: {}%\n{}", name, vol, bar);
+        
+        let style = if app.is_group_muted(i) {
+            Style::default().fg(Color::Red)
+        } else if i == app.current_group {
+            Style::default().fg(group_colors[i]).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(group_colors[i])
+        };
+        
+        let mute_indicator = if app.is_group_muted(i) { " [MUTED]" } else { "" };
+        let block_title = format!("{}{}", keys, mute_indicator);
+        
+        let group_block = Paragraph::new(text)
+            .block(Block::default().borders(Borders::ALL).title(block_title))
+            .style(style)
+            .alignment(Alignment::Center);
+        f.render_widget(group_block, group_chunks[i]);
+    }
+}
+
+fn create_volume_bar(volume: u8, is_muted: bool) -> String {
+    if is_muted {
+        "■■■■■■■■■■".to_string()
+    } else {
+        let filled = (volume / 10) as usize;
+        let empty = 10 - filled;
+        "█".repeat(filled) + &"░".repeat(empty)
+    }
+}
+
 fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -269,7 +351,7 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(tempo, chunks[1]);
 
     // Help
-    let help_text = "SPACE:Play/Stop | R:Record | C:Clear | TAB:Groups | ←→:Patterns | ↑↓:Tempo | ESC:Quit";
+    let help_text = "SPACE:Play/Stop | R:Record | C:Clear | TAB:Groups | ←→:Patterns | ↑↓:Tempo | =/−:Master Vol | M:Master Mute | 1-4/!@#$:Group Vol | F1-F4:Group Mute | ESC:Quit";
     let help = Paragraph::new(help_text)
         .block(Block::default().borders(Borders::ALL).title("Controls"))
         .style(Style::default().fg(Color::DarkGray));
