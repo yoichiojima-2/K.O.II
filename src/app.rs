@@ -51,9 +51,11 @@ impl App {
 
     pub fn trigger_pad(&mut self, pad: usize) {
         if pad < 16 {
-            // Play the sample
-            if let Some(sample) = self.sample_bank.get_sample(self.current_group, pad) {
-                self.audio_engine.play_sample(sample);
+            // Play the sample only if not recording
+            if !self.is_recording {
+                if let Some(sample) = self.sample_bank.get_sample(self.current_group, pad) {
+                    self.audio_engine.play_sample(sample);
+                }
             }
             
             // Record if recording
