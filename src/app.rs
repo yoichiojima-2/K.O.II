@@ -1,30 +1,21 @@
 use crate::mixer::Mixer;
 use crate::sequencer::Sequencer;
 use crate::sample::SampleBank;
-use std::time::Instant;
+use crate::state::{AppState, UIState};
+use crate::audio_manager::AudioManager;
+use crate::error::Result;
 
 pub struct App {
     pub mixer: Mixer,
     pub sequencer: Sequencer,
     pub sample_bank: SampleBank,
-    pub current_group: usize,
-    pub group_patterns: [usize; 4], // Each group has its own current pattern
-    pub is_playing: bool,
-    pub is_recording: bool,
-    pub tempo: u32,
-    pub last_tick: Instant,
-    pub selected_pad: Option<usize>,
-    pub flashing_pads: Vec<(usize, usize)>, // (group, pad) pairs that are currently flashing
-    pub flash_timer: Instant,
+    pub state: AppState,
+    pub ui_state: UIState,
 }
 
 impl App {
-    pub fn new() -> Self {
-        let mixer = Mixer::new();
-        let mut sample_bank = SampleBank::new();
-        
-        // Load default samples
-        sample_bank.load_defaults();
+    pub fn new() -> Result<Self> {
+        let audio_manager = AudioManager::new()?;
         
         let mut sequencer = Sequencer::new();
         
@@ -33,126 +24,152 @@ impl App {
             sequencer.set_active_pattern(group, 0);
         }
         
-        Self {
-            mixer,
+        Ok(Self {
+            mixer: audio_manager.mixer,
             sequencer,
-            sample_bank,
-            current_group: 0,
-            group_patterns: [0; 4], // Each group starts on pattern 0
-            is_playing: false,
-            is_recording: false,
-            tempo: 120,
-            last_tick: Instant::now(),
-            selected_pad: None,
-            flashing_pads: Vec::new(),
-            flash_timer: Instant::now(),
+            sample_bank: audio_manager.sample_bank,
+            state: AppState::new(),
+            ui_state: UIState::new(),
+        })
+    }
+    
+    pub fn with_audio_test() -> Result<Self> {
+        let mut audio_manager = AudioManager::new()?;
+        audio_manager.test_audio()?;
+        audio_manager.validate_audio_system()?;
+        
+        let mut sequencer = Sequencer::new();
+        
+        // Initialize all groups to use pattern 0
+        for group in 0..4 {
+            sequencer.set_active_pattern(group, 0);
         }
+        
+        Ok(Self {
+            mixer: audio_manager.mixer,
+            sequencer,
+            sample_bank: audio_manager.sample_bank,
+            state: AppState::new(),
+            ui_state: UIState::new(),
+        })
     }
 
     pub fn trigger_pad(&mut self, pad: usize) {
         if pad < 16 {
             // Play the sample only if not recording
-            if !self.is_recording {
-                if let Some(sample) = self.sample_bank.get_sample(self.current_group, pad) {
-                    self.mixer.play_sample(sample, self.current_group);
+            if !self.state.is_recording {
+                if let Some(sample) = self.sample_bank.get_sample(self.state.current_group, pad) {
+                    self.mixer.play_sample(sample, self.state.current_group);
                 }
             }
             
             // Record if recording
-            if self.is_recording && self.is_playing {
+            if self.state.is_recording && self.state.is_playing {
                 self.sequencer.record_hit(
-                    self.current_group,
-                    self.group_patterns[self.current_group],
+                    self.state.current_group,
+                    self.state.group_patterns[self.state.current_group],
                     pad,
                 );
             }
             
-            self.selected_pad = Some(pad);
+            self.ui_state.select_pad(pad);
         }
     }
 
     pub fn toggle_playback(&mut self) {
-        self.is_playing = !self.is_playing;
-        if self.is_playing {
+        self.state.toggle_playback();
+        if self.state.is_playing {
             self.sequencer.reset_position();
         }
     }
 
     pub fn toggle_recording(&mut self) {
-        self.is_recording = !self.is_recording;
+        self.state.toggle_recording();
     }
 
     pub fn clear_pattern(&mut self) {
-        self.sequencer.clear_pattern(self.current_group, self.group_patterns[self.current_group]);
+        self.sequencer.clear_pattern(self.state.current_group, self.state.group_patterns[self.state.current_group]);
     }
 
     pub fn next_group(&mut self) {
-        self.current_group = (self.current_group + 1) % 4;
+        self.state.next_group();
     }
 
     pub fn prev_group(&mut self) {
-        self.current_group = if self.current_group == 0 { 3 } else { self.current_group - 1 };
+        self.state.prev_group();
     }
 
     pub fn next_pattern(&mut self) {
-        self.group_patterns[self.current_group] = (self.group_patterns[self.current_group] + 1) % 99;
-        self.sequencer.set_active_pattern(self.current_group, self.group_patterns[self.current_group]);
+        self.state.next_pattern();
+        self.sequencer.set_active_pattern(self.state.current_group, self.state.group_patterns[self.state.current_group]);
     }
 
     pub fn prev_pattern(&mut self) {
-        let current_pattern = self.group_patterns[self.current_group];
-        self.group_patterns[self.current_group] = if current_pattern == 0 { 98 } else { current_pattern - 1 };
-        self.sequencer.set_active_pattern(self.current_group, self.group_patterns[self.current_group]);
+        self.state.prev_pattern();
+        self.sequencer.set_active_pattern(self.state.current_group, self.state.group_patterns[self.state.current_group]);
     }
 
     pub fn adjust_tempo(&mut self, delta: i32) {
-        let new_tempo = (self.tempo as i32 + delta).clamp(60, 300) as u32;
-        self.tempo = new_tempo;
+        self.state.adjust_tempo(delta);
     }
 
     pub fn tick(&mut self) {
-        let now = Instant::now();
+        // Update UI state
+        self.ui_state.update_flash();
         
-        // Clear flashing pads after flash duration (150ms)
-        if now.duration_since(self.flash_timer) >= std::time::Duration::from_millis(150) {
-            self.flashing_pads.clear();
-        }
-        
-        if self.is_playing {
-            let elapsed = now.duration_since(self.last_tick);
-            let tick_duration = std::time::Duration::from_millis(60000 / (self.tempo * 4) as u64);
+        if self.state.should_tick() {
+            self.state.update_tick_time();
             
-            if elapsed >= tick_duration {
-                self.last_tick = now;
-                
-                // Get hits for current position
-                let hits = self.sequencer.tick(self.tempo);
-                
-                // Clear previous flashing pads and set new ones
-                self.flashing_pads.clear();
-                self.flash_timer = now;
-                
-                // Play all hits and add to flashing pads
-                for (group, pad) in hits {
-                    if let Some(sample) = self.sample_bank.get_sample(group, pad) {
-                        self.mixer.play_sample(sample, group);
-                    }
-                    self.flashing_pads.push((group, pad));
+            // Get hits for current position
+            let hits = self.sequencer.tick(self.state.tempo);
+            
+            // Start flash for new hits
+            self.ui_state.start_flash(hits.clone());
+            
+            // Play all hits
+            for (group, pad) in hits {
+                if let Some(sample) = self.sample_bank.get_sample(group, pad) {
+                    self.mixer.play_sample(sample, group);
                 }
             }
         }
     }
 
     pub fn get_pattern_grid(&self) -> Vec<Vec<bool>> {
-        self.sequencer.get_pattern_grid(self.current_group, self.group_patterns[self.current_group])
+        self.sequencer.get_pattern_grid(self.state.current_group, self.state.group_patterns[self.state.current_group])
     }
     
     pub fn get_current_pattern(&self) -> usize {
-        self.group_patterns[self.current_group]
+        self.state.get_current_pattern()
     }
 
     pub fn get_current_step(&self) -> usize {
         self.sequencer.get_current_step()
+    }
+    
+    // Getter methods for UI
+    pub fn get_current_group(&self) -> usize {
+        self.state.current_group
+    }
+    
+    pub fn get_selected_pad(&self) -> Option<usize> {
+        self.ui_state.selected_pad
+    }
+    
+    pub fn is_pad_flashing(&self, group: usize, pad: usize) -> bool {
+        self.ui_state.is_pad_flashing(group, pad)
+    }
+    
+    pub fn is_playing(&self) -> bool {
+        self.state.is_playing
+    }
+    
+    pub fn is_recording(&self) -> bool {
+        self.state.is_recording
+    }
+    
+    pub fn get_tempo(&self) -> u32 {
+        self.state.tempo
     }
 
     // Mixer control methods
@@ -195,125 +212,125 @@ mod tests {
 
     #[test]
     fn test_app_creation() {
-        let app = App::new();
-        assert_eq!(app.current_group, 0);
-        assert_eq!(app.group_patterns, [0; 4]);
-        assert!(!app.is_playing);
-        assert!(!app.is_recording);
-        assert_eq!(app.tempo, 120);
-        assert_eq!(app.selected_pad, None);
-        assert!(app.flashing_pads.is_empty());
+        let app = App::new().unwrap();
+        assert_eq!(app.state.current_group, 0);
+        assert_eq!(app.state.group_patterns, [0; 4]);
+        assert!(!app.state.is_playing);
+        assert!(!app.state.is_recording);
+        assert_eq!(app.state.tempo, 120);
+        assert_eq!(app.ui_state.selected_pad, None);
+        assert!(app.ui_state.flashing_pads.is_empty());
     }
 
     #[test]
     fn test_group_navigation() {
-        let mut app = App::new();
+        let mut app = App::new().unwrap();
         
         // Test next group
         app.next_group();
-        assert_eq!(app.current_group, 1);
+        assert_eq!(app.state.current_group, 1);
         
         app.next_group();
-        assert_eq!(app.current_group, 2);
+        assert_eq!(app.state.current_group, 2);
         
         app.next_group();
-        assert_eq!(app.current_group, 3);
+        assert_eq!(app.state.current_group, 3);
         
         // Test wrap around
         app.next_group();
-        assert_eq!(app.current_group, 0);
+        assert_eq!(app.state.current_group, 0);
         
         // Test previous group
         app.prev_group();
-        assert_eq!(app.current_group, 3);
+        assert_eq!(app.state.current_group, 3);
         
         app.prev_group();
-        assert_eq!(app.current_group, 2);
+        assert_eq!(app.state.current_group, 2);
     }
 
     #[test]
     fn test_pattern_navigation() {
-        let mut app = App::new();
+        let mut app = App::new().unwrap();
         
         // Test next pattern
         app.next_pattern();
-        assert_eq!(app.group_patterns[0], 1);
+        assert_eq!(app.state.group_patterns[0], 1);
         
         // Test wrap around (max is 99)
-        app.group_patterns[0] = 98;
+        app.state.group_patterns[0] = 98;
         app.next_pattern();
-        assert_eq!(app.group_patterns[0], 0);
+        assert_eq!(app.state.group_patterns[0], 0);
         
         // Test previous pattern
         app.prev_pattern();
-        assert_eq!(app.group_patterns[0], 98);
+        assert_eq!(app.state.group_patterns[0], 98);
         
-        app.group_patterns[0] = 1;
+        app.state.group_patterns[0] = 1;
         app.prev_pattern();
-        assert_eq!(app.group_patterns[0], 0);
+        assert_eq!(app.state.group_patterns[0], 0);
     }
 
     #[test]
     fn test_tempo_adjustment() {
-        let mut app = App::new();
+        let mut app = App::new().unwrap();
         
         // Test increase tempo
         app.adjust_tempo(10);
-        assert_eq!(app.tempo, 130);
+        assert_eq!(app.state.tempo, 130);
         
         // Test decrease tempo
         app.adjust_tempo(-20);
-        assert_eq!(app.tempo, 110);
+        assert_eq!(app.state.tempo, 110);
         
         // Test tempo bounds
         app.adjust_tempo(-100);
-        assert_eq!(app.tempo, 60); // Min tempo
+        assert_eq!(app.state.tempo, 60); // Min tempo
         
         app.adjust_tempo(300);
-        assert_eq!(app.tempo, 300); // Max tempo
+        assert_eq!(app.state.tempo, 300); // Max tempo
         
         app.adjust_tempo(10);
-        assert_eq!(app.tempo, 300); // Should not exceed max
+        assert_eq!(app.state.tempo, 300); // Should not exceed max
     }
 
     #[test]
     fn test_playback_toggle() {
-        let mut app = App::new();
+        let mut app = App::new().unwrap();
         
-        assert!(!app.is_playing);
+        assert!(!app.state.is_playing);
         app.toggle_playback();
-        assert!(app.is_playing);
+        assert!(app.state.is_playing);
         app.toggle_playback();
-        assert!(!app.is_playing);
+        assert!(!app.state.is_playing);
     }
 
     #[test]
     fn test_recording_toggle() {
-        let mut app = App::new();
+        let mut app = App::new().unwrap();
         
-        assert!(!app.is_recording);
+        assert!(!app.state.is_recording);
         app.toggle_recording();
-        assert!(app.is_recording);
+        assert!(app.state.is_recording);
         app.toggle_recording();
-        assert!(!app.is_recording);
+        assert!(!app.state.is_recording);
     }
 
     #[test]
     fn test_pad_trigger() {
-        let mut app = App::new();
+        let mut app = App::new().unwrap();
         
         // Test valid pad
         app.trigger_pad(5);
-        assert_eq!(app.selected_pad, Some(5));
+        assert_eq!(app.ui_state.selected_pad, Some(5));
         
         // Test invalid pad (should be ignored)
         app.trigger_pad(20);
-        assert_eq!(app.selected_pad, Some(5)); // Should remain unchanged
+        assert_eq!(app.ui_state.selected_pad, Some(5)); // Should remain unchanged
     }
 
     #[test]
     fn test_volume_controls() {
-        let mut app = App::new();
+        let mut app = App::new().unwrap();
         
         let initial_master = app.get_master_volume();
         app.adjust_master_volume(0.1);
@@ -330,7 +347,7 @@ mod tests {
 
     #[test]
     fn test_mute_controls() {
-        let mut app = App::new();
+        let mut app = App::new().unwrap();
         
         // Test master mute
         assert!(!app.is_master_muted());

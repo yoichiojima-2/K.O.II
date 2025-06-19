@@ -38,7 +38,7 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
                 _ => Color::DarkGray,
             };
             
-            if i == app.current_group {
+            if i == app.get_current_group() {
                 Line::from(Span::styled(
                     format!(" {} ", name),
                     Style::default()
@@ -57,7 +57,7 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
 
     let tabs = Tabs::new(titles)
         .block(Block::default().borders(Borders::ALL).title("K.O.II Terminal"))
-        .select(app.current_group)
+        .select(app.get_current_group())
         .style(Style::default().fg(Color::White))
         .highlight_style(Style::default().fg(Color::Cyan));
 
@@ -93,11 +93,11 @@ fn draw_pad_grid(f: &mut Frame, area: Rect, app: &App) {
 
         for (col_idx, col_area) in cols.iter().enumerate() {
             let pad_idx = row_idx * 4 + col_idx;
-            let is_selected = app.selected_pad == Some(pad_idx);
-            let is_flashing = app.flashing_pads.contains(&(app.current_group, pad_idx));
+            let is_selected = app.get_selected_pad() == Some(pad_idx);
+            let is_flashing = app.is_pad_flashing(app.get_current_group(), pad_idx);
             
             let sample_name = app.sample_bank
-                .get_sample_name(app.current_group, pad_idx)
+                .get_sample_name(app.get_current_group(), pad_idx)
                 .unwrap_or("Empty");
 
             let key_hint = match pad_idx {
@@ -129,7 +129,7 @@ fn draw_pad_grid(f: &mut Frame, area: Rect, app: &App) {
                 Style::default()
                     .fg(Color::Black)
                     .bg(Color::Cyan)
-            } else if app.sample_bank.has_sample(app.current_group, pad_idx) {
+            } else if app.sample_bank.has_sample(app.get_current_group(), pad_idx) {
                 Style::default()
                     .fg(Color::Cyan)
                     .bg(Color::DarkGray)
@@ -177,7 +177,7 @@ fn draw_pattern_view(f: &mut Frame, area: Rect, app: &App) {
     let group_names = ["DRUMS", "BASS", "LEAD", "VOCAL"];
     let pattern_info = Paragraph::new(format!(
         "{} Pattern: {:02}\nStep: {:02}/16",
-        group_names[app.current_group],
+        group_names[app.get_current_group()],
         app.get_current_pattern() + 1,
         app.get_current_step() + 1
     ))
@@ -191,7 +191,7 @@ fn draw_pattern_view(f: &mut Frame, area: Rect, app: &App) {
     // Create header with step numbers
     let mut header_cells = vec![Cell::from("Pad")];
     for i in 0..16 {
-        let step_style = if i == current_step && app.is_playing {
+        let step_style = if i == current_step && app.is_playing() {
             Style::default().fg(Color::Black).bg(Color::White)
         } else {
             Style::default().fg(Color::White)
@@ -206,7 +206,7 @@ fn draw_pattern_view(f: &mut Frame, area: Rect, app: &App) {
         let mut cells = vec![Cell::from(format!("{:2}", pad_idx))];
         for (step_idx, &has_hit) in pad_steps.iter().enumerate() {
             let cell_content = if has_hit { "●" } else { "·" };
-            let group_color = match app.current_group {
+            let group_color = match app.get_current_group() {
                 0 => Color::Rgb(100, 150, 150), // DRUMS - muted teal
                 1 => Color::Rgb(100, 100, 150), // BASS - muted blue  
                 2 => Color::Rgb(150, 100, 150), // LEAD - muted purple
@@ -214,7 +214,7 @@ fn draw_pattern_view(f: &mut Frame, area: Rect, app: &App) {
                 _ => Color::DarkGray,
             };
             
-            let cell_style = if step_idx == current_step && app.is_playing {
+            let cell_style = if step_idx == current_step && app.is_playing() {
                 Style::default().fg(Color::Black).bg(Color::White)
             } else if has_hit {
                 Style::default().fg(group_color)
@@ -292,7 +292,7 @@ fn draw_mixer(f: &mut Frame, area: Rect, app: &App) {
         
         let style = if app.is_group_muted(i) {
             Style::default().fg(Color::Red)
-        } else if i == app.current_group {
+        } else if i == app.get_current_group() {
             Style::default().fg(group_colors[i]).add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(group_colors[i])
@@ -332,12 +332,12 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
     // Transport controls
     let transport_text = format!(
         "{}  {}",
-        if app.is_playing { "⏸ PLAYING" } else { "⏵ STOPPED" },
-        if app.is_recording { "● REC" } else { "○" }
+        if app.is_playing() { "⏸ PLAYING" } else { "⏵ STOPPED" },
+        if app.is_recording() { "● REC" } else { "○" }
     );
     let transport = Paragraph::new(transport_text)
         .block(Block::default().borders(Borders::ALL).title("Transport"))
-        .style(if app.is_playing {
+        .style(if app.is_playing() {
             Style::default().fg(Color::Cyan)
         } else {
             Style::default().fg(Color::White)
@@ -345,7 +345,7 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(transport, chunks[0]);
 
     // Tempo
-    let tempo = Paragraph::new(format!("{} BPM", app.tempo))
+    let tempo = Paragraph::new(format!("{} BPM", app.get_tempo()))
         .block(Block::default().borders(Borders::ALL).title("Tempo"))
         .alignment(Alignment::Center);
     f.render_widget(tempo, chunks[1]);

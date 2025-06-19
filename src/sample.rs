@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use crate::error::{AppError, Result};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SampleMapping {
@@ -28,11 +29,11 @@ impl SampleBank {
         }
     }
 
-    pub fn load_defaults(&mut self) {
+    pub fn load_defaults(&mut self) -> Result<()> {
         // First try to load from JSON config
         if self.load_from_config().is_ok() {
             eprintln!("Loaded samples from config file");
-            return;
+            return Ok(());
         }
         
         // Fallback to directory scanning
@@ -103,6 +104,8 @@ impl SampleBank {
         
         // Create placeholder names for empty pads
         self.create_placeholder_names();
+        
+        Ok(())
     }
     
     fn create_placeholder_names(&mut self) {
@@ -146,18 +149,19 @@ impl SampleBank {
         }
     }
 
-    pub fn load_sample(&mut self, group: usize, pad: usize, path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn load_sample(&mut self, group: usize, pad: usize, path: &str) -> Result<()> {
         // Check if file exists
         if !std::path::Path::new(path).exists() {
-            return Err(format!("Sample file not found: {}", path).into());
+            return Err(AppError::Sample(format!("Sample file not found: {}", path)));
         }
 
         // Read the entire file into memory
-        let sample_data = std::fs::read(path)?;
+        let sample_data = std::fs::read(path)
+            .map_err(|e| AppError::Sample(format!("Failed to read sample file {}: {}", path, e)))?;
         
         // Verify it's a valid audio file by checking the header
         if sample_data.len() < 12 {
-            return Err("Invalid audio file: too small".into());
+            return Err(AppError::Sample("Invalid audio file: too small".to_string()));
         }
         
         // Basic format validation (check for common audio file headers)
@@ -168,7 +172,7 @@ impl SampleBank {
         let is_ogg = sample_data.starts_with(b"OggS");
         
         if !is_wav && !is_mp3 && !is_flac && !is_ogg {
-            return Err("Unsupported audio format. Please use WAV, MP3, FLAC, or OGG files.".into());
+            return Err(AppError::Sample("Unsupported audio format. Please use WAV, MP3, FLAC, or OGG files.".to_string()));
         }
         
         self.samples.insert((group, pad), sample_data);
@@ -210,15 +214,17 @@ impl SampleBank {
         }
     }
     
-    pub fn create_samples_directory() -> Result<(), Box<dyn std::error::Error>> {
+    pub fn create_samples_directory() -> Result<()> {
         let samples_dir = "samples";
         let group_dirs = ["drums", "bass", "lead", "vocal"];
         
-        std::fs::create_dir_all(samples_dir)?;
+        std::fs::create_dir_all(samples_dir)
+            .map_err(|e| AppError::Config(format!("Failed to create samples directory: {}", e)))?;
         
         for group_dir in &group_dirs {
             let group_path = format!("{}/{}", samples_dir, group_dir);
-            std::fs::create_dir_all(&group_path)?;
+            std::fs::create_dir_all(&group_path)
+                .map_err(|e| AppError::Config(format!("Failed to create group directory {}: {}", group_path, e)))?;
         }
         
         println!("Created samples directory structure:");
@@ -330,15 +336,17 @@ impl SampleBank {
         None
     }
     
-    fn load_from_config(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    fn load_from_config(&mut self) -> Result<()> {
         let config_path = "samples/config.json";
         
         if !std::path::Path::new(config_path).exists() {
-            return Err("Config file not found".into());
+            return Err(AppError::Config("Config file not found".to_string()));
         }
         
-        let config_content = std::fs::read_to_string(config_path)?;
-        let config: SampleConfig = serde_json::from_str(&config_content)?;
+        let config_content = std::fs::read_to_string(config_path)
+            .map_err(|e| AppError::Config(format!("Failed to read config file: {}", e)))?;
+        let config: SampleConfig = serde_json::from_str(&config_content)
+            .map_err(|e| AppError::Config(format!("Failed to parse config file: {}", e)))?;
         
         for mapping in config.mappings {
             if mapping.group < 4 && mapping.pad < 16 {
@@ -369,7 +377,7 @@ impl SampleBank {
         Ok(())
     }
     
-    pub fn generate_example_config() -> Result<(), Box<dyn std::error::Error>> {
+    pub fn generate_example_config() -> Result<()> {
         let example_config = SampleConfig {
             mappings: vec![
                 SampleMapping {
@@ -399,8 +407,10 @@ impl SampleBank {
             ],
         };
         
-        let config_json = serde_json::to_string_pretty(&example_config)?;
-        std::fs::write("samples/config.example.json", config_json)?;
+        let config_json = serde_json::to_string_pretty(&example_config)
+            .map_err(|e| AppError::Config(format!("Failed to serialize config: {}", e)))?;
+        std::fs::write("samples/config.example.json", config_json)
+            .map_err(|e| AppError::Config(format!("Failed to write config file: {}", e)))?;
         
         println!("Generated example config at samples/config.example.json");
         println!("Rename to config.json and edit to use custom mappings");
