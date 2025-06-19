@@ -188,3 +188,162 @@ impl App {
         self.mixer.is_group_muted(group)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_app_creation() {
+        let app = App::new();
+        assert_eq!(app.current_group, 0);
+        assert_eq!(app.group_patterns, [0; 4]);
+        assert!(!app.is_playing);
+        assert!(!app.is_recording);
+        assert_eq!(app.tempo, 120);
+        assert_eq!(app.selected_pad, None);
+        assert!(app.flashing_pads.is_empty());
+    }
+
+    #[test]
+    fn test_group_navigation() {
+        let mut app = App::new();
+        
+        // Test next group
+        app.next_group();
+        assert_eq!(app.current_group, 1);
+        
+        app.next_group();
+        assert_eq!(app.current_group, 2);
+        
+        app.next_group();
+        assert_eq!(app.current_group, 3);
+        
+        // Test wrap around
+        app.next_group();
+        assert_eq!(app.current_group, 0);
+        
+        // Test previous group
+        app.prev_group();
+        assert_eq!(app.current_group, 3);
+        
+        app.prev_group();
+        assert_eq!(app.current_group, 2);
+    }
+
+    #[test]
+    fn test_pattern_navigation() {
+        let mut app = App::new();
+        
+        // Test next pattern
+        app.next_pattern();
+        assert_eq!(app.group_patterns[0], 1);
+        
+        // Test wrap around (max is 99)
+        app.group_patterns[0] = 98;
+        app.next_pattern();
+        assert_eq!(app.group_patterns[0], 0);
+        
+        // Test previous pattern
+        app.prev_pattern();
+        assert_eq!(app.group_patterns[0], 98);
+        
+        app.group_patterns[0] = 1;
+        app.prev_pattern();
+        assert_eq!(app.group_patterns[0], 0);
+    }
+
+    #[test]
+    fn test_tempo_adjustment() {
+        let mut app = App::new();
+        
+        // Test increase tempo
+        app.adjust_tempo(10);
+        assert_eq!(app.tempo, 130);
+        
+        // Test decrease tempo
+        app.adjust_tempo(-20);
+        assert_eq!(app.tempo, 110);
+        
+        // Test tempo bounds
+        app.adjust_tempo(-100);
+        assert_eq!(app.tempo, 60); // Min tempo
+        
+        app.adjust_tempo(300);
+        assert_eq!(app.tempo, 300); // Max tempo
+        
+        app.adjust_tempo(10);
+        assert_eq!(app.tempo, 300); // Should not exceed max
+    }
+
+    #[test]
+    fn test_playback_toggle() {
+        let mut app = App::new();
+        
+        assert!(!app.is_playing);
+        app.toggle_playback();
+        assert!(app.is_playing);
+        app.toggle_playback();
+        assert!(!app.is_playing);
+    }
+
+    #[test]
+    fn test_recording_toggle() {
+        let mut app = App::new();
+        
+        assert!(!app.is_recording);
+        app.toggle_recording();
+        assert!(app.is_recording);
+        app.toggle_recording();
+        assert!(!app.is_recording);
+    }
+
+    #[test]
+    fn test_pad_trigger() {
+        let mut app = App::new();
+        
+        // Test valid pad
+        app.trigger_pad(5);
+        assert_eq!(app.selected_pad, Some(5));
+        
+        // Test invalid pad (should be ignored)
+        app.trigger_pad(20);
+        assert_eq!(app.selected_pad, Some(5)); // Should remain unchanged
+    }
+
+    #[test]
+    fn test_volume_controls() {
+        let mut app = App::new();
+        
+        let initial_master = app.get_master_volume();
+        app.adjust_master_volume(0.1);
+        assert!((app.get_master_volume() - (initial_master + 0.1)).abs() < 0.001);
+        
+        app.adjust_master_volume(-0.2);
+        assert!((app.get_master_volume() - (initial_master - 0.1)).abs() < 0.001);
+        
+        // Test group volume
+        let initial_group = app.get_group_volume(0);
+        app.adjust_group_volume(0, 0.05);
+        assert!((app.get_group_volume(0) - (initial_group + 0.05)).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_mute_controls() {
+        let mut app = App::new();
+        
+        // Test master mute
+        assert!(!app.is_master_muted());
+        app.toggle_master_mute();
+        assert!(app.is_master_muted());
+        app.toggle_master_mute();
+        assert!(!app.is_master_muted());
+        
+        // Test group mute
+        assert!(!app.is_group_muted(0));
+        app.toggle_group_mute(0);
+        assert!(app.is_group_muted(0));
+        app.toggle_group_mute(0);
+        assert!(!app.is_group_muted(0));
+    }
+}

@@ -408,3 +408,162 @@ impl SampleBank {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::Path;
+
+    #[test]
+    fn test_sample_bank_creation() {
+        let bank = SampleBank::new();
+        assert!(bank.samples.is_empty());
+        assert!(bank.sample_names.is_empty());
+    }
+
+    #[test]
+    fn test_group_names() {
+        let bank = SampleBank::new();
+        assert_eq!(bank.get_group_name(0), "DRUMS");
+        assert_eq!(bank.get_group_name(1), "BASS");
+        assert_eq!(bank.get_group_name(2), "LEAD");
+        assert_eq!(bank.get_group_name(3), "VOCAL");
+        assert_eq!(bank.get_group_name(99), "GROUP99");
+    }
+
+    #[test]
+    fn test_sample_management() {
+        let mut bank = SampleBank::new();
+        
+        // Test has_sample (should be false initially)
+        assert!(!bank.has_sample(0, 0));
+        
+        // Test get_sample (should return None initially)
+        assert!(bank.get_sample(0, 0).is_none());
+        
+        // Test get_sample_name (should return None initially)
+        assert!(bank.get_sample_name(0, 0).is_none());
+        
+        // Test remove_sample (should not panic on empty bank)
+        bank.remove_sample(0, 0);
+        assert!(!bank.has_sample(0, 0));
+    }
+
+    #[test]
+    fn test_extract_pad_from_filename() {
+        let bank = SampleBank::new();
+        
+        // Test 1-based numbering
+        assert_eq!(bank.extract_pad_from_filename("kick_01"), Some(0));
+        assert_eq!(bank.extract_pad_from_filename("snare-12"), Some(11));
+        assert_eq!(bank.extract_pad_from_filename("hihat.15"), Some(14));
+        
+        // Test 0-based numbering
+        assert_eq!(bank.extract_pad_from_filename("pad00"), Some(0));
+        assert_eq!(bank.extract_pad_from_filename("pad15"), Some(14)); // pad15 is 1-based, so converts to 14
+        
+        // Test edge cases
+        assert_eq!(bank.extract_pad_from_filename("p01_kick"), Some(0));
+        assert_eq!(bank.extract_pad_from_filename("12"), Some(11)); // 1-based
+        assert_eq!(bank.extract_pad_from_filename("00"), Some(0));  // 0-based
+        
+        // Test invalid cases
+        assert_eq!(bank.extract_pad_from_filename("kick"), None);
+        assert_eq!(bank.extract_pad_from_filename("17"), None); // Out of range
+        assert_eq!(bank.extract_pad_from_filename("pad99"), None); // Out of range
+    }
+
+    #[test]
+    fn test_generate_simple_kick() {
+        let bank = SampleBank::new();
+        let kick_data = bank.generate_simple_kick();
+        
+        // Check that we got data
+        assert!(!kick_data.is_empty());
+        
+        // Check WAV header
+        assert!(kick_data.starts_with(b"RIFF"));
+        assert_eq!(&kick_data[8..12], b"WAVE");
+        
+        // Check minimum size (should have header + some audio data)
+        assert!(kick_data.len() > 44); // WAV header is 44 bytes minimum
+    }
+
+    #[test] 
+    fn test_sample_config_serialization() {
+        let config = SampleConfig {
+            mappings: vec![
+                SampleMapping {
+                    group: 0,
+                    pad: 0,
+                    file: "kick.wav".to_string(),
+                    name: Some("Kick".to_string()),
+                },
+                SampleMapping {
+                    group: 1,
+                    pad: 5,
+                    file: "bass01.wav".to_string(),
+                    name: None,
+                },
+            ],
+        };
+        
+        // Test serialization
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("kick.wav"));
+        assert!(json.contains("bass01.wav"));
+        
+        // Test deserialization
+        let parsed: SampleConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.mappings.len(), 2);
+        assert_eq!(parsed.mappings[0].group, 0);
+        assert_eq!(parsed.mappings[0].pad, 0);
+        assert_eq!(parsed.mappings[0].file, "kick.wav");
+        assert_eq!(parsed.mappings[0].name, Some("Kick".to_string()));
+    }
+
+    #[test]
+    fn test_load_sample_validation() {
+        let mut bank = SampleBank::new();
+        
+        // Test loading non-existent file
+        let result = bank.load_sample(0, 0, "nonexistent.wav");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_generate_example_config() {
+        // Clean up any existing file first
+        let _ = fs::remove_file("samples/config.example.json");
+        
+        // Generate example config
+        let result = SampleBank::generate_example_config();
+        assert!(result.is_ok());
+        
+        // Check that file was created
+        assert!(Path::new("samples/config.example.json").exists());
+        
+        // Check content
+        let content = fs::read_to_string("samples/config.example.json").unwrap();
+        assert!(content.contains("drums/kick.wav"));
+        assert!(content.contains("Kick"));
+        
+        // Clean up
+        let _ = fs::remove_file("samples/config.example.json");
+    }
+
+    #[test]
+    fn test_create_placeholder_names() {
+        let mut bank = SampleBank::new();
+        bank.create_placeholder_names();
+        
+        // Check that placeholder names were created
+        assert_eq!(bank.get_sample_name(0, 0), Some("Kick"));
+        assert_eq!(bank.get_sample_name(0, 1), Some("Snare"));
+        assert_eq!(bank.get_sample_name(1, 0), Some("Bass1"));
+        assert_eq!(bank.get_sample_name(2, 0), Some("Lead1"));
+        assert_eq!(bank.get_sample_name(3, 0), Some("Vocal1"));
+    }
+}
